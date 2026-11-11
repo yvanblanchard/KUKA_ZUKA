@@ -1,0 +1,35 @@
+# kuka_zuka configuration — edit to match YOUR cell.
+
+connection:
+  host: 172.31.1.147        # KRC4 IP (KLI / X66). Change me.
+  port: 7000                # KUKAVARPROXY port
+  timeout_s: 2.0            # socket timeout per request
+  ack_timeout_s: 3.0        # KRLDRIVER must accept a command within this
+  motion_timeout_s: 120.0   # a single motion must finish within this
+  poll_period_s: 0.05
+  mock_port: 7001           # port used by the built-in mock controller
+
+robot:
+  model: KR10 R1100 sixx
+  home_axes: [0.0, -90.0, 90.0, 0.0, 0.0, 0.0]
+  n_inputs: 16
+  n_outputs: 16
+
+safety:                     # PC-side caps — NOT a substitute for the controller's safety
+  max_override: 10.0        # % ($OV_PRO)
+  max_vel_cp: 0.1           # m/s
+  max_vel_ptp: 10.0         # %
+  max_rel_deg: 10.0         # deg per relative axis move / jog step
+  max_rel_mm: 50.0          # mm per relative cartesian move / jog step
+  max_rel_rot_deg: 10.0     # deg per relative cartesian rotation
+  # KR10 R1100 sixx software limits (datasheet). Verify against $SOFTN_END/$SOFTP_END on your KRC.
+  axis_limits:
+    - [-170, 170]
+    - [-190, 45]
+    - [-120, 156]
+    - [-185, 185]
+    - [-120, 120]
+    - [-350, 350]
+  axis_margin_deg: 2.0
+  write_denylist: ["$MACHINE", "$ROBCOR", "$CUSTOM", "$RAT_MOT", "$DEF_", "$AXIS_CAL",
+                   "$MAMES", "$SOFTN_END", "$SOFTP_END", "$SAFE", "$TORQUE"]

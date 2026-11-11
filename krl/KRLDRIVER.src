@@ -1,0 +1,113 @@
+&ACCESS RVP
+&REL 1
+&PARAM EDITMASK = *
+&PARAM TEMPLATE = C:\KRC\Roboter\Template\vorgabe
+DEF KRLDRIVER( )
+;============================================================
+; KRLDRIVER v2 - resident command loop for kuka_zuka (PC side)
+; Derived from ZuKa KRLDRIVER.src (Zagazig University, 2017)
+;
+; Handshake (PC = kuka_zuka.driver):
+;   1. PC waits KRLD_COM==0 AND KRLD_STATE==0
+;   2. PC writes parameters (KRLD_AXIS / KRLD_POS / ...)
+;   3. PC writes KRLD_SEQ=n, then KRLD_COM=<code>
+;   4. Robot copies params to locals, sets KRLD_STATE=1,
+;      KRLD_ACK=n, KRLD_COM=0            (= accepted)
+;   5. Robot executes, waits for end of motion (advance stop),
+;      sets KRLD_DONE=n, KRLD_STATE=0    (= finished)
+; Fixes vs v1: params consumed before ACK (no lost points),
+; CIRC aux point, done-feedback, optional home on start,
+; tech-package INI calls removed (USERSPOT/USER_GRP).
+; NOTE: every motion is exact-stop (no approximation/blending),
+; because each command ends with an advance-run stop.
+;
+; Requires the globals of config_dat_globals.txt in $config.dat
+;============================================================
+DECL INT nCom, nSeq
+DECL E6AXIS axTgt
+DECL E6POS pTgt, pAux
+DECL FRAME fRel
+
+;FOLD INI;%{PE}
+  ;FOLD BASISTECH INI
+    GLOBAL INTERRUPT DECL 3 WHEN $STOPMESS==TRUE DO IR_STOPM ( )
+    INTERRUPT ON 3
+    BAS (#INITMOV,0 )
+  ;ENDFOLD (BASISTECH INI)
+  ;FOLD USER INI
+    ;Make your modifications here
+  ;ENDFOLD (USER INI)
+;ENDFOLD (INI)
+
+KRLD_COM=0
+KRLD_STATE=0
+$PAL_MODE=FALSE
+$VEL.CP=KRLD_VEL_CP
+BAS(#VEL_PTP,KRLD_VEL_PTP)
+
+; BCO run: home if requested, otherwise zero-length move to current pose
+IF KRLD_HOME_ON_START THEN
+  PTP {A1 0, A2 -90, A3 90, A4 0, A5 0, A6 0}
+ELSE
+  PTP $AXIS_ACT
+ENDIF
+
+LOOP
+  WAIT FOR KRLD_COM<>0          ; advance-run stop: nothing is pre-read
+
+  nCom=KRLD_COM
+  nSeq=KRLD_SEQ
+  axTgt=KRLD_AXIS
+  pTgt=KRLD_POS
+  pAux=KRLD_POS_AUX
+  fRel=KRLD_FRAME
+
+  KRLD_STATE=1
+  KRLD_ACK=nSeq
+  KRLD_COM=0
+
+  SWITCH nCom
+  CASE 1
+    PTP axTgt
+  CASE 2
+    PTP pTgt
+  CASE 3
+    LIN pTgt
+  CASE 4
+    CIRC pAux, pTgt
+  CASE 5
+    PTP_REL axTgt
+  CASE 6
+    PTP_REL fRel
+  CASE 7
+    LIN_REL fRel
+  CASE 8
+    WAIT SEC KRLD_SLEEP
+  CASE 9
+    $BASE=KRLD_BASE:KRLD_BASE_OFFSET
+  CASE 10
+    $TOOL=KRLD_TOOL
+  CASE 11
+    $APO.CPTP=KRLD_APO
+    $APO.CDIS=KRLD_APO
+  CASE 12
+    $VEL.CP=KRLD_VEL_CP
+  CASE 13
+    BAS(#VEL_PTP,KRLD_VEL_PTP)
+  CASE 14
+    $OUT[KRLD_IO]=KRLD_SIGNAL
+  CASE 15
+    $PAL_MODE=KRLD_SIGNAL
+  CASE 99
+    ; NOOP - handshake test
+  DEFAULT
+    KRLD_STATE=2                ; unknown command
+  ENDSWITCH
+
+  WAIT SEC 0                    ; advance-run stop: motion finished
+  KRLD_DONE=nSeq
+  IF KRLD_STATE==1 THEN
+    KRLD_STATE=0
+  ENDIF
+ENDLOOP
+END
